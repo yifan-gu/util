@@ -1,18 +1,19 @@
+#include <assert.h>
 #include <errno.h>
 #include <error.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef TESTMAP
-#include <assert.h>
-#endif
-
 #include "map.h"
 #include "slice.h"
 #include "link_list.h"
 
 void mm_print_map(map_t *m, bool verbose);
+
+int unused  __attribute__((unused));
+#define DUMP_ITEM(fp, item) fwrite((item), sizeof(item), 1, (fp))
+#define LOAD_ITEM(fp, item) unused = fread((item), sizeof(item), 1, (fp))
 
 #define NEW_INSTANCE(ret, structure)                                    \
         if (((ret) = calloc(1, sizeof(structure))) == NULL) {           \
@@ -72,11 +73,6 @@ static kv_pair_t *new_kv_pair(void *key, size_t key_size,
         return kv;
 }
 
-//static kv_pair_t *copy_kv(kv_pair_t *kv, size_t key_size, size_t value_size)
-//{
-//        return new_kv_pair(kv->key, key_size, kv->value, value_size);
-//}
-
 static void free_kv_pair(kv_pair_t *kv)
 {
         free(kv->key);
@@ -84,12 +80,12 @@ static void free_kv_pair(kv_pair_t *kv)
         free(kv);
 }
 
-static kv_pair_t *get_kv_from_bucket(list_t *bucket, void *key, keyeq_t kequal)
+static kv_pair_t *get_kv_from_bucket(list_t *bucket, void *key, size_t key_size)
 {
         node_t *node;
         for (ll_traverse(bucket, node)) {
                 kv_pair_t *kv = (kv_pair_t *)node->item;
-                if (kequal(kv->key, key)) {
+                if (memcmp(kv->key, key, key_size) == 0) {
                         return kv;
                 }
         }
@@ -105,7 +101,7 @@ static inline list_t * get_bucket(map_t *m, void *key)
 static kv_pair_t *get_kv(map_t *m, void *key)
 {
         list_t * bucket = get_bucket(m, key);
-        return get_kv_from_bucket(bucket, key, m->kequal);
+        return get_kv_from_bucket(bucket, key, m->key_size);
 }
 
 static bool get_and_update(map_t *m,
@@ -113,7 +109,7 @@ static bool get_and_update(map_t *m,
                            void *key,
                            void *value)
 {
-        kv_pair_t *kv = get_kv_from_bucket(bucket, key, m->kequal);
+        kv_pair_t *kv = get_kv_from_bucket(bucket, key, m->key_size);
         if (kv) {
                 kv->value = realloc(kv->value, m->value_size);
                 if (!kv->value) {
@@ -143,7 +139,7 @@ static int split(map_t *m)
                 }
 
                 // move the node
-                node_t *prev = node->prev;
+                node_t *prev = node->prev; // need to keep this for iteration
                 ll_remove_node(split_bucket, node);
                 new_bucket = *(list_t **)ss_getptr(m->s, new_offset);
                 ll_append_node(new_bucket, node);
@@ -159,21 +155,25 @@ static int split(map_t *m)
         return 0;
 }
 
+static inline uint64_t get_orig_pos(map_t *m)
+{
+        if (m->pos == 0) {
+                return (m->cap >> 1) - 1;
+        }
+        return  m->pos - 1;
+}
+
 static int shrink(map_t *m)
 {
-        // get the original position
-        uint64_t original_offset = m->pos - 1;
-        if (m->pos == 0) {
-                original_offset = (m->cap >> 1) - 1;
-        }
+        // compute original position
+        uint64_t original_offset = get_orig_pos(m);
         list_t * original_bucket = *(list_t **)ss_getptr(m->s, original_offset);
 
         // re-arrange items in the last bucket
         list_t *last_bucket = *(list_t **)ss_getptr(m->s, m->s->len-1);
         node_t *node;
         for (ll_traverse(last_bucket, node)) {
-                // move the node to its old position
-                node_t *prev = node->prev;
+                node_t *prev = node->prev; // need to keep this for iteration
                 ll_remove_node(last_bucket, node);
                 ll_append_node(original_bucket, node);
                 node = prev;
@@ -191,12 +191,12 @@ static int shrink(map_t *m)
         return 0;
 }
 
-static bool find_and_remove_from_bucket(list_t *bucket, void *key, keyeq_t kequal)
+static bool find_and_remove_from_bucket(list_t *bucket, void *key, size_t key_size)
 {
         node_t *node;
         for (ll_traverse(bucket, node)) {
                 kv_pair_t *kv = (kv_pair_t *)node->item;
-                if (kequal(kv->key, key)) {
+                if (memcmp(kv->key, key, key_size) == 0) {
                         ll_free_node(bucket, node);
                         return true;
                 }
@@ -204,8 +204,7 @@ static bool find_and_remove_from_bucket(list_t *bucket, void *key, keyeq_t kequa
         return false;
 }
 
-map_t *make_map(size_t key_size, size_t value_size,
-                keyeq_t kequal, key2int_t k2int)
+map_t *make_map(size_t key_size, size_t value_size, key2int_t k2int)
 {
         map_t *m;
         NEW_INSTANCE(m, map_t);
@@ -215,7 +214,6 @@ map_t *make_map(size_t key_size, size_t value_size,
         m->pos = 0;
         m->key_size = key_size;
         m->value_size = value_size;
-        m->kequal = kequal;
         m->k2int = k2int;
 
         slice_t *s = make_slice(m->cap, sizeof(list_t *), NULL);
@@ -260,7 +258,7 @@ int mm_put(map_t *m, void *key, void *value)
 bool mm_delete(map_t *m, void *key)
 {
         list_t *bucket = get_bucket(m, key);
-        if(!find_and_remove_from_bucket(bucket, key, m->kequal)) {
+        if (!find_and_remove_from_bucket(bucket, key, m->key_size)) {
                 return false;
         }
         m->used--;
@@ -278,6 +276,73 @@ int delete_map(map_t *m)
         }
         delete_slice(m->s);
         free(m);
+        return 0;
+}
+
+int mm_marshal(const char *path, map_t *m)
+{
+        FILE *fp = fopen(path, "wb+");
+        if (!fp) {
+                error_at_line(-1, errno, __FILE__, __LINE__, NULL);
+        }
+        // dump metadata
+        DUMP_ITEM(fp, &m->bucket_cap);
+        DUMP_ITEM(fp, &m->split_ratio);
+        DUMP_ITEM(fp, &m->key_size);
+        DUMP_ITEM(fp, &m->value_size);
+
+        // dump the table
+        for (int i = 0; i < m->s->len; i++) {
+                list_t *list = *(list_t **)ss_getptr(m->s, i);
+                node_t *node;
+                if (list->len ==  0) {
+                        continue;
+                }
+                for (ll_traverse(list, node)) {
+                        kv_pair_t *kv = (kv_pair_t *)node->item;
+                        fwrite(kv->key, m->key_size, 1, fp);
+                        fwrite(kv->value, m->value_size, 1, fp);
+                }
+        }
+        fclose(fp);
+        return 0;
+}
+
+int mm_unmarshal(const char *path, map_t *m)
+{
+        FILE *fp = fopen(path, "rb");
+        if (!fp) {
+                error_at_line(-1, errno, __FILE__, __LINE__, NULL);
+        }
+        // load metadata
+        LOAD_ITEM(fp, &m->bucket_cap);
+        LOAD_ITEM(fp, &m->split_ratio);
+        LOAD_ITEM(fp, &m->key_size);
+        LOAD_ITEM(fp, &m->value_size);
+
+        // load data
+        void *key = malloc(m->key_size);
+        if (!key) {
+                error_at_line(-1, errno, __FILE__, __LINE__, NULL);
+        }
+        void *val = malloc(m->value_size);
+        if (!val) {
+                error_at_line(-1, errno, __FILE__, __LINE__, NULL);
+        }
+        while (1) {
+                unused = fread(key, m->key_size, 1, fp);
+                if (feof(fp)) {
+                        break;
+                }
+                unused = fread(val, m->value_size, 1, fp);
+                if (feof(fp)) {
+                        break;
+                }
+                mm_put(m, key, val);
+        }
+        free(key);
+        free(val);
+        fclose(fp);
         return 0;
 }
 
@@ -315,13 +380,6 @@ void mm_print_map(map_t *m, bool verbose)
 #ifdef TESTMAP
 // testing
 
-bool equal(void *a, void *b)
-{
-        int aa = *(int *)a;
-        int bb = *(int *)b;
-        return aa == bb;
-}
-
 uint64_t toint(void *key)
 {
         return (uint64_t)*(int *)key;
@@ -329,15 +387,19 @@ uint64_t toint(void *key)
 
 int main(int argc, char *argv[])
 {
+        ///////////////////////////////////////////////////
+        //                 simple test                   //
+        ///////////////////////////////////////////////////
+
         printf("=== RUN Simple Test\n");
-        map_t *m = make_map(sizeof(int), sizeof(int), equal, toint);
+        map_t *m = make_map(sizeof(int), sizeof(int), toint);
         //printf("after make:\n");
         //mm_print_map(m);
 
         for (int i = 80; i > 30; i--) {
                 mm_put(m, &i, &i);
                 //printf("i = %d\n", i);
-                mm_print_map(m, true);
+                //mm_print_map(m, true);
         }
         //printf("after insertion:\n");
         //mm_print_map(m, true);
@@ -362,7 +424,11 @@ int main(int argc, char *argv[])
         printf("--- PASS ---\n");
 
         mm_print_map(m, true);
-        // random test
+
+        ///////////////////////////////////////////////////
+        //                 random test                   //
+        ///////////////////////////////////////////////////
+
         printf("=== Random Test ===\n");
         list_t *queue = ll_new_list(sizeof(int), NULL);
         for (int i = 0; i < 102400; i++) {
@@ -370,14 +436,14 @@ int main(int argc, char *argv[])
                 ll_append(queue, &ran);
         }
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 1; i++) {
                 printf("=== RUN Put Test ===\n");
                 node_t *node;
                 for (ll_traverse(queue, node)) {
-                        uint64_t k;
+                        int k;
                         int v, getValue;
                         ll_get_node_item(queue, node, &v);
-                        k = (uint64_t)v;
+                        k = (int)v;
 
                         assert(mm_put(m, &k, &v) == 0);
                         assert(mm_get(m, &k, &getValue));
@@ -387,10 +453,10 @@ int main(int argc, char *argv[])
 
                 printf("=== RUN Get Test ===\n");
                 for (ll_traverse(queue, node)) {
-                        uint64_t k;
+                        int k;
                         int v, getValue;
                         ll_get_node_item(queue, node, &v);
-                        k = (uint64_t)v;
+                        k = (int)v;
 
                         assert(mm_get(m, &k, &getValue));
                         assert(getValue == v);
@@ -399,10 +465,10 @@ int main(int argc, char *argv[])
 
                 printf("=== RUN Delete Test ===\n");
                 for (ll_traverse(queue, node)) {
-                        uint64_t k;
+                        int k;
                         int v, getValue;
                         ll_get_node_item(queue, node, &v);
-                        k = (uint64_t)v;
+                        k = (int)v;
 
                         mm_delete(m, &k);
                         assert(!mm_get(m, &k, &getValue));
@@ -411,18 +477,54 @@ int main(int argc, char *argv[])
 
                 printf("=== RUN Get Test ===\n");
                 for (ll_traverse(queue, node)) {
-                        uint64_t k;
+                        int k;
                         int v, getValue;
                         ll_get_node_item(queue, node, &v);
-                        k = (uint64_t)v;
+                        k = (int)v;
 
                         assert(!mm_get(m, &k, &getValue));
                 }
                 printf("--- PASS ---\n");
         }
-        mm_print_map(m, true);
+        //mm_print_map(m, true);
 
+        ///////////////////////////////////////////////////
+        //            marshal/unmarshl test              //
+        ///////////////////////////////////////////////////
+
+        printf("=== RUN Marshlal/Unmarshal Test ===\n");
+        node_t *node;
+        for (ll_traverse(queue, node)) {
+                int k;
+                int v, getValue;
+                ll_get_node_item(queue, node, &v);
+                k = (int)v;
+
+                assert(mm_put(m, &k, &v) == 0);
+                assert(mm_get(m, &k, &getValue));
+                assert(getValue == v);
+        }
+        //mm_print_map(m, true);
+
+        mm_marshal("test.txt", m);
         delete_map(m);
+
+        map_t *mm = make_map(sizeof(int), sizeof(int), toint);
+        mm_unmarshal("test.txt", mm);
+        //mm_print_map(mm, true);
+        for (ll_traverse(queue, node)) {
+                int k;
+                int v, getValue;
+                ll_get_node_item(queue, node, &v);
+                k = (int)v;
+
+                assert(mm_get(mm, &k, &getValue));
+                assert(getValue == v);
+        }
+
+        printf("--- PASS ---\n");
+
+        delete_map(mm);
         ll_delete_list(queue);
         return 0;
 }

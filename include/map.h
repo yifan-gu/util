@@ -20,7 +20,6 @@
 
 #endif
 
-typedef bool (*keyeq_t) (void *, void *);
 typedef uint64_t (*key2int_t) (void *);
 
 typedef struct map_s {
@@ -35,7 +34,6 @@ typedef struct map_s {
         size_t key_size;
         size_t value_size;
 
-        keyeq_t kequal;
         key2int_t k2int;
 }map_t;
 
@@ -45,8 +43,7 @@ typedef struct kv_pair_s {
 }kv_pair_t;
 
 // constructor
-map_t *make_map(size_t key_size, size_t value_size,
-                keyeq_t kequal, key2int_t k2int);
+map_t *make_map(size_t key_size, size_t value_size, key2int_t k2int);
 
 // return 0 on success, -1 on failure
 int mm_put(map_t *m, void *key, void *value);
@@ -60,5 +57,9 @@ bool mm_delete(map_t *m, void *key);
 int delete_map(map_t *m);
 
 void mm_print_map(map_t *m, bool verbose);
+
+int mm_mashal(const char *path, map_t *m);
+
+int mm_unmarshal(const char *path, map_t *m);
 
 #endif
