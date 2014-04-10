@@ -14,8 +14,6 @@
 
 typedef void (*dtor)(void *);
 
-void mm_print_map(map_t *m);
-
 #define NEW_INSTANCE(ret, structure)                                    \
         if (((ret) = calloc(1, sizeof(structure))) == NULL) {           \
                 error_at_line(-1, errno, __FILE__, __LINE__, NULL);     \
@@ -65,13 +63,12 @@ static kv_pair_t *new_kv_pair(uint64_t key, void *value, size_t value_size)
                 error_at_line(-1, errno, __FILE__, __LINE__, NULL);
         }
         memcpy(kv->value, value, value_size);
-        kv->value_size = value_size;
         return kv;
 }
 
-static kv_pair_t *copy_kv(kv_pair_t *kv)
+static kv_pair_t *copy_kv(kv_pair_t *kv, size_t value_size)
 {
-        return new_kv_pair(kv->key, kv->value, kv->value_size);
+        return new_kv_pair(kv->key, kv->value, value_size);
 }
 
 static void free_kv_pair(kv_pair_t *kv)
@@ -113,7 +110,6 @@ static bool get_and_update(list_t *bucket, uint64_t key, void *value, size_t val
                         error_at_line(-1, errno, __FILE__, __LINE__, NULL);
                 }
                 memcpy(kv->value, value, value_size);
-                kv->value_size = value_size;
                 return true;
         }
         return false;
@@ -137,7 +133,7 @@ static int split(map_t *m)
                 }
 
                 // move the item
-                kv_copy = copy_kv(kv);
+                kv_copy = copy_kv(kv, m->value_size);
                 new_bucket = *(list_t **)ss_getptr(m->s, new_offset);
                 ll_append_ref(new_bucket, kv_copy);
 
@@ -171,7 +167,7 @@ static int shrink(map_t *m)
                 kv = (kv_pair_t *)node->item;
 
                 // move to its original position
-                kv_copy = copy_kv(kv);
+                kv_copy = copy_kv(kv, m->value_size);
                 ll_append_ref(original_bucket, kv_copy);
                 node = node->prev;
                 ll_remove_node(last_bucket, node->next);
@@ -189,7 +185,7 @@ static int shrink(map_t *m)
         return 0;
 }
 
-static bool found_and_remove_from_bucket(list_t *bucket, uint64_t key)
+static bool find_and_remove_from_bucket(list_t *bucket, uint64_t key)
 {
         node_t *node;
         for (ll_traverse(bucket, node)) {
@@ -202,7 +198,7 @@ static bool found_and_remove_from_bucket(list_t *bucket, uint64_t key)
         return false;
 }
 
-map_t *make_map(void)
+map_t *make_map(size_t value_size)
 {
         map_t *m;
         NEW_INSTANCE(m, map_t);
@@ -210,6 +206,7 @@ map_t *make_map(void)
         m->bucket_cap = DEFAULT_BUCKET_CAP;
         m->split_ratio = SPLIT_RATIO;
         m->pos = 0;
+        m->value_size = value_size;
 
         slice_t *s = make_slice(m->cap, sizeof(list_t *), NULL);
         for (int i = 0; i < s->cap; i++) {
@@ -225,22 +222,22 @@ bool mm_get(map_t *m, uint64_t key, void *value)
 {
         kv_pair_t *kv = get_kv(m, key);
         if (kv) {
-                memcpy(value, kv->value, kv->value_size);
+                memcpy(value, kv->value, m->value_size);
                 return true;
         }
         return false;
 }
 
-int mm_put(map_t *m, uint64_t key, void *value, size_t value_size)
+int mm_put(map_t *m, uint64_t key, void *value)
 {
         // update the old value if it exists
         list_t *bucket = get_bucket(m, key);
-        if (get_and_update(bucket, key, value, value_size)) {
+        if (get_and_update(bucket, key, value, m->value_size)) {
                 return 0;
         }
 
         // otherwise, allocate a kv-pair and append it to the tail
-        kv_pair_t *kv = new_kv_pair(key, value, value_size);
+        kv_pair_t *kv = new_kv_pair(key, value, m->value_size);
         ll_append_ref(bucket, kv);
 
         m->used++;
@@ -253,7 +250,7 @@ int mm_put(map_t *m, uint64_t key, void *value, size_t value_size)
 bool mm_delete(map_t *m, uint64_t key)
 {
         list_t *bucket = get_bucket(m, key);
-        if(!found_and_remove_from_bucket(bucket, key)) {
+        if(!find_and_remove_from_bucket(bucket, key)) {
                 return false;
         }
         m->used--;
@@ -274,7 +271,7 @@ int delete_map(map_t *m)
         return 0;
 }
 
-void mm_print_map(map_t *m)
+void mm_print_map(map_t *m, bool verbose)
 {
         printf("map statistics:\n");
         printf("cap: %lu, used: %lu, bucket_cap: %lu, usage: %.2f, split_ratio: %.2f, pos: %lu\n",
@@ -282,21 +279,24 @@ void mm_print_map(map_t *m)
         printf("underlying slice statistics:\n");
         printf("len: %lu, cap: %lu\n",
                m->s->len, m->s->cap);
-        printf("content:\n");
 
-        for (int i = 0; i < m->s->len; i++) {
-                list_t *list = *(list_t **)ss_getptr(m->s, i);
-                node_t *node;
-                if (list->len > 0) {
-                        printf("index[%2d]: ", i);
-                }
-                for (ll_traverse(list, node)) {
-                        kv_pair_t *kv = (kv_pair_t *)node->item;
-                        printf("[%lu] => %d ",
-                               kv->key, *(int *)kv->value);
-                }
-                if (list->len > 0) {
-                        printf("\n");
+        if (verbose) {
+                printf("content:\n");
+
+                for (int i = 0; i < m->s->len; i++) {
+                        list_t *list = *(list_t **)ss_getptr(m->s, i);
+                        node_t *node;
+                        if (list->len > 0) {
+                                printf("index[%2d]: ", i);
+                        }
+                        for (ll_traverse(list, node)) {
+                                kv_pair_t *kv = (kv_pair_t *)node->item;
+                                printf("[%lu] => %d ",
+                                       kv->key, *(int *)kv->value);
+                        }
+                        if (list->len > 0) {
+                                printf("\n");
+                        }
                 }
         }
         printf("\n");
@@ -308,12 +308,12 @@ void mm_print_map(map_t *m)
 int main(int argc, char *argv[])
 {
         printf("=== RUN Simple Test\n");
-        map_t *m = make_map();
+        map_t *m = make_map(sizeof(int));
         //printf("after make:\n");
         //mm_print_map(m);
 
         for (int i = 80; i > 30; i--) {
-                mm_put(m, i, &i, sizeof(int));
+                mm_put(m, i, &i);
                 //mm_print_map(m);
         }
         //printf("after insertion:\n");
@@ -338,7 +338,7 @@ int main(int argc, char *argv[])
         //mm_print_map(m);
         printf("--- PASS ---\n");
 
-        mm_print_map(m);
+        mm_print_map(m, true);
         // random test
         printf("=== Random Test ===\n");
         list_t *queue = ll_new_list(sizeof(int), NULL);
@@ -356,7 +356,7 @@ int main(int argc, char *argv[])
                         ll_get_node_item(queue, node, &v);
                         k = (uint64_t)v;
 
-                        assert(mm_put(m, k, &v, sizeof(int)) == 0);
+                        assert(mm_put(m, k, &v) == 0);
                         assert(mm_get(m, k, &getValue));
                         assert(getValue == v);
                 }
@@ -397,7 +397,7 @@ int main(int argc, char *argv[])
                 }
                 printf("--- PASS ---\n");
         }
-        mm_print_map(m);
+        mm_print_map(m, true);
 
         delete_map(m);
         ll_delete_list(queue);

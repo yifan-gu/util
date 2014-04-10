@@ -38,7 +38,7 @@ size_t ss_append(slice_t *s, void *item)
         }
 
         // realloc
-        s->cap <<= 2;
+        s->cap <<= 1;
         s->array = realloc(s->array, s->item_size * s->cap);
         if (!s->array) {
                 error_at_line(-1, errno, __FILE__, __LINE__, NULL);

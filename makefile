@@ -1,5 +1,5 @@
 CC = gcc
-CFLAG = -Wall -Werror -std=c99 -pg
+CFLAG = -Wall -Werror -std=c99 -O3
 
 IDIR = include
 SRCDIR = src
@@ -38,6 +38,7 @@ clean:
 	@rm testslice
 	@rm testlist
 	@rm testmap
+	@rm benchmap
 
 test: testbin
 	./testslice
