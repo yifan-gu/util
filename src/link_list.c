@@ -57,7 +57,7 @@ list_t * ll_new_list(size_t item_size, dtor_t dtor)
         return list;
 }
 
-static void ll_free_node(list_t *list, node_t *node)
+static void ll_clean_node(list_t *list, node_t *node)
 {
         if (!list->dtor) {
                 list->dtor = free;
@@ -97,6 +97,18 @@ int ll_append_ref(list_t *list, void *item)
         return list->len;
 }
 
+int ll_append_node(list_t *list, node_t *node)
+{
+        node_t *tail = list->tail;
+        node->next = tail;
+        node->prev = tail->prev;
+        tail->prev->next = node;
+        tail->prev = node;
+
+        list->len++;
+        return list->len;
+}
+
 // remove the last item
 int ll_remove(list_t *list, void *item)
 {
@@ -110,7 +122,7 @@ int ll_remove(list_t *list, void *item)
 
         last->prev->next = last->next;
         last->next->prev = last->prev;
-        ll_free_node(list, last);
+        ll_clean_node(list, last);
 
         list->len--;
         return list->len;
@@ -147,6 +159,19 @@ int ll_push_ref(list_t *list, void *item)
         return list->len;
 }
 
+int ll_push_node(list_t *list, node_t *node)
+{
+        node_t *head = list->head;
+
+        node->prev = head;
+        node->next = head->next;
+        head->next->prev = node;
+        head->next = node;
+
+        list->len++;
+        return list->len;
+}
+
 // pop the first item
 int ll_pop(list_t *list, void *item)
 {
@@ -160,7 +185,17 @@ int ll_pop(list_t *list, void *item)
 
         first->prev->next = first->next;
         first->next->prev = first->prev;
-        ll_free_node(list, first);
+        ll_clean_node(list, first);
+
+        list->len--;
+        return list->len;
+}
+
+int ll_free_node(list_t *list, node_t *node)
+{
+        node->prev->next = node->next;
+        node->next->prev = node->prev;
+        ll_clean_node(list, node);
 
         list->len--;
         return list->len;
@@ -170,7 +205,6 @@ int ll_remove_node(list_t *list, node_t *node)
 {
         node->prev->next = node->next;
         node->next->prev = node->prev;
-        ll_free_node(list, node);
 
         list->len--;
         return list->len;
