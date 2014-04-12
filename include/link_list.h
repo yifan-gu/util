@@ -1,7 +1,10 @@
 #ifndef _LINK_LIST_H
 #define _LINK_LIST_H
 
-typedef void (*dtor_t)(void *item);
+#ifndef DTOR
+#define DTOR
+typedef void (*dtor_t)(void *);
+#endif
 
 typedef struct node_s {
         struct node_s *prev;
@@ -15,7 +18,6 @@ typedef struct list_s {
         size_t item_size;
         size_t len;
         dtor_t dtor;
-
 }list_t;
 
 list_t * ll_new_list(size_t item_size, dtor_t dtor); // already inited
@@ -40,7 +42,7 @@ int ll_get_node_item(list_t *list, node_t *node, void *item);
 int ll_deinit_list(list_t *list);
 int ll_delete_list(list_t *list);
 
-#define ll_traverse(list, node)                                    \
+#define ll_traverse(list, node)                                         \
         (node) = (list)->head->next; (node) != (list)->tail; (node) = (node)->next
 
 #endif

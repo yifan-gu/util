@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
                 sum += end - now;
                 printf("trial %d\n", i);
         }
-        printf("time: %lus\n", sum);
+        printf("time: %llus\n", sum);
 
         return 0;
 }

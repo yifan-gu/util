@@ -260,7 +260,7 @@ int main(int argc, char *argv[])
         for (int i = 0; i < sizeof(array) / sizeof(int); i++) {
                 ll_append(list, &array[i]);
         }
-        printf("list->len %lu\n", list->len);
+        printf("list->len %zu\n", list->len);
 
         while (list->len > 0) {
                 int item;
@@ -271,7 +271,7 @@ int main(int argc, char *argv[])
         for (int i = 0; i < sizeof(array) / sizeof(int); i++) {
                 ll_push(list, &array[i]);
         }
-        printf("list->len %lu\n", list->len);
+        printf("list->len %zu\n", list->len);
 
         while (list->len > 0) {
                 int item;

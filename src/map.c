@@ -236,6 +236,11 @@ bool mm_get(map_t *m, void *key, void *value)
         return false;
 }
 
+bool mm_haskey(map_t *m, void *key)
+{
+        return get_kv(m, key) != NULL;
+}
+
 int mm_put(map_t *m, void *key, void *value)
 {
         // update the old value if it exists
@@ -349,10 +354,10 @@ int mm_unmarshal(const char *path, map_t *m)
 void mm_print_map(map_t *m, bool verbose)
 {
         printf("map statistics:\n");
-        printf("cap: %lu, used: %lu, bucket_cap: %lu, usage: %.2f, split_ratio: %.2f, pos: %lu\n",
+        printf("cap: %zu, used: %zu, bucket_cap: %zu, usage: %.2f, split_ratio: %.2f, pos: %llu\n",
                m->cap, m->used, m->bucket_cap, get_usage(m), m->split_ratio, m->pos);
         printf("underlying slice statistics:\n");
-        printf("len: %lu, cap: %lu\n",
+        printf("len: %zu, cap: %zu\n",
                m->s->len, m->s->cap);
 
         if (verbose) {
@@ -406,6 +411,7 @@ int main(int argc, char *argv[])
 
         for (int i = 31; i <= 80; i++) {
                 int v;
+                assert(mm_haskey(m, &i));
                 assert(mm_get(m, &i, &v));
                 assert(v == i);
         }
@@ -446,6 +452,7 @@ int main(int argc, char *argv[])
                         k = (int)v;
 
                         assert(mm_put(m, &k, &v) == 0);
+                        assert(mm_haskey(m, &k));
                         assert(mm_get(m, &k, &getValue));
                         assert(getValue == v);
                 }
@@ -458,6 +465,7 @@ int main(int argc, char *argv[])
                         ll_get_node_item(queue, node, &v);
                         k = (int)v;
 
+                        assert(mm_haskey(m, &k));
                         assert(mm_get(m, &k, &getValue));
                         assert(getValue == v);
                 }
@@ -471,6 +479,7 @@ int main(int argc, char *argv[])
                         k = (int)v;
 
                         mm_delete(m, &k);
+                        assert(!mm_haskey(m, &k));
                         assert(!mm_get(m, &k, &getValue));
                 }
                 printf("--- PASS ---\n");
@@ -482,6 +491,7 @@ int main(int argc, char *argv[])
                         ll_get_node_item(queue, node, &v);
                         k = (int)v;
 
+                        assert(!mm_haskey(m, &k));
                         assert(!mm_get(m, &k, &getValue));
                 }
                 printf("--- PASS ---\n");
@@ -501,6 +511,7 @@ int main(int argc, char *argv[])
                 k = (int)v;
 
                 assert(mm_put(m, &k, &v) == 0);
+                assert(mm_haskey(m, &k));
                 assert(mm_get(m, &k, &getValue));
                 assert(getValue == v);
         }
@@ -518,6 +529,7 @@ int main(int argc, char *argv[])
                 ll_get_node_item(queue, node, &v);
                 k = (int)v;
 
+                assert(mm_haskey(m, &k));
                 assert(mm_get(mm, &k, &getValue));
                 assert(getValue == v);
         }

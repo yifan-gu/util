@@ -3,7 +3,10 @@
 
 #include <stdlib.h>
 
-typedef void (*dtor_t) (void*);
+#ifndef DTOR
+#define DTOR
+typedef void (*dtor_t)(void *);
+#endif
 
 typedef struct slice_s {
         void *array;

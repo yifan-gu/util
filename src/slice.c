@@ -81,7 +81,7 @@ int ss_put(slice_t *s, uint64_t i, void *item)
 int ss_shrink(slice_t *s, size_t new_len)
 {
         if (s->len <= new_len) {
-                printf("new_len %lu > len %lu\n", new_len, s->len);
+                printf("new_len %zu > len %zu\n", new_len, s->len);
                 return -1;
         }
         s->len = new_len;
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
                 ss_get(s, i, &item);
                 printf("slice[%d] = %d\n", i, item);
         }
-        printf("slice len: %lu cap: %lu\n", s->len, s->cap);
+        printf("slice len: %zu cap: %zu\n", s->len, s->cap);
 
         for (int i = 0; i < s->len; i++) {
                 int tmp = i*2;

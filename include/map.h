@@ -52,13 +52,16 @@ int mm_put(map_t *m, void *key, void *value);
 bool mm_get(map_t *m, void *key, void *value);
 
 // return true if found, false if not
+bool mm_haskey(map_t *m, void *key);
+
+// return true if found, false if not
 bool mm_delete(map_t *m, void *key);
 
 int delete_map(map_t *m);
 
 void mm_print_map(map_t *m, bool verbose);
 
-int mm_mashal(const char *path, map_t *m);
+int mm_marshal(const char *path, map_t *m);
 
 int mm_unmarshal(const char *path, map_t *m);
 
