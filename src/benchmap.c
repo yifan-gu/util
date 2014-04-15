@@ -7,7 +7,7 @@
 static const int limit = 1000000;
 static const int trial = 10;
 
-uint64_t toint(void *key)
+uint64_t toint(const void *key)
 {
         return (uint64_t)*(int *)key;
 }
@@ -28,7 +28,7 @@ void shuffle(int s[], int len)
 
 int main(int argc, char *argv[])
 {
-        map_t *m = make_map(sizeof(int), sizeof(int), toint);
+        map_t *m = make_map(sizeof(int), sizeof(int), toint, NULL);
         int *s = (int *)malloc(limit * sizeof(int));
         for (int i = 0; i < limit; i++) {
                 s[i] = i;

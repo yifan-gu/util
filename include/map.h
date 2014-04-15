@@ -20,7 +20,8 @@
 
 #endif
 
-typedef uint64_t (*key2int_t) (void *);
+typedef uint64_t (*key2int_t) (const void *key);
+typedef int (*keycmp_t) (const void *key1, const void *key2, size_t keysize);
 
 typedef struct map_s {
         size_t cap;
@@ -35,6 +36,7 @@ typedef struct map_s {
         size_t value_size;
 
         key2int_t k2int;
+        keycmp_t kcmp;
 }map_t;
 
 typedef struct kv_pair_s {
@@ -43,7 +45,7 @@ typedef struct kv_pair_s {
 }kv_pair_t;
 
 // constructor
-map_t *make_map(size_t key_size, size_t value_size, key2int_t k2int);
+map_t *make_map(size_t key_size, size_t value_size, key2int_t k2int, keycmp_t kcmp);
 
 // return 0 on success, -1 on failure
 int mm_put(map_t *m, void *key, void *value);

@@ -80,12 +80,12 @@ static void free_kv_pair(kv_pair_t *kv)
         free(kv);
 }
 
-static kv_pair_t *get_kv_from_bucket(list_t *bucket, void *key, size_t key_size)
+static kv_pair_t *get_kv_from_bucket(list_t *bucket, void *key, size_t key_size, keycmp_t kcmp)
 {
         node_t *node;
         for (ll_traverse(bucket, node)) {
                 kv_pair_t *kv = (kv_pair_t *)node->item;
-                if (memcmp(kv->key, key, key_size) == 0) {
+                if (kcmp(kv->key, key, key_size) == 0) {
                         return kv;
                 }
         }
@@ -101,7 +101,7 @@ static inline list_t * get_bucket(map_t *m, void *key)
 static kv_pair_t *get_kv(map_t *m, void *key)
 {
         list_t * bucket = get_bucket(m, key);
-        return get_kv_from_bucket(bucket, key, m->key_size);
+        return get_kv_from_bucket(bucket, key, m->key_size, m->kcmp);
 }
 
 static bool get_and_update(map_t *m,
@@ -109,7 +109,7 @@ static bool get_and_update(map_t *m,
                            void *key,
                            void *value)
 {
-        kv_pair_t *kv = get_kv_from_bucket(bucket, key, m->key_size);
+        kv_pair_t *kv = get_kv_from_bucket(bucket, key, m->key_size, m->kcmp);
         if (kv) {
                 kv->value = realloc(kv->value, m->value_size);
                 if (!kv->value) {
@@ -191,12 +191,12 @@ static int shrink(map_t *m)
         return 0;
 }
 
-static bool find_and_remove_from_bucket(list_t *bucket, void *key, size_t key_size)
+static bool find_and_remove_from_bucket(list_t *bucket, void *key, size_t key_size, keycmp_t kcmp)
 {
         node_t *node;
         for (ll_traverse(bucket, node)) {
                 kv_pair_t *kv = (kv_pair_t *)node->item;
-                if (memcmp(kv->key, key, key_size) == 0) {
+                if (kcmp(kv->key, key, key_size) == 0) {
                         ll_free_node(bucket, node);
                         return true;
                 }
@@ -204,7 +204,7 @@ static bool find_and_remove_from_bucket(list_t *bucket, void *key, size_t key_si
         return false;
 }
 
-map_t *make_map(size_t key_size, size_t value_size, key2int_t k2int)
+map_t *make_map(size_t key_size, size_t value_size, key2int_t k2int, keycmp_t kcmp)
 {
         map_t *m;
         NEW_INSTANCE(m, map_t);
@@ -215,6 +215,10 @@ map_t *make_map(size_t key_size, size_t value_size, key2int_t k2int)
         m->key_size = key_size;
         m->value_size = value_size;
         m->k2int = k2int;
+        m->kcmp = kcmp;
+        if (m->kcmp == NULL) {
+                m->kcmp = memcmp;
+        }
 
         slice_t *s = make_slice(m->cap, sizeof(list_t *), NULL);
         for (int i = 0; i < s->cap; i++) {
@@ -263,7 +267,7 @@ int mm_put(map_t *m, void *key, void *value)
 bool mm_delete(map_t *m, void *key)
 {
         list_t *bucket = get_bucket(m, key);
-        if (!find_and_remove_from_bucket(bucket, key, m->key_size)) {
+        if (!find_and_remove_from_bucket(bucket, key, m->key_size, m->kcmp)) {
                 return false;
         }
         m->used--;
@@ -385,7 +389,7 @@ void mm_print_map(map_t *m, bool verbose)
 #ifdef TESTMAP
 // testing
 
-uint64_t toint(void *key)
+uint64_t toint(const void *key)
 {
         return (uint64_t)*(int *)key;
 }
@@ -397,7 +401,7 @@ int main(int argc, char *argv[])
         ///////////////////////////////////////////////////
 
         printf("=== RUN Simple Test\n");
-        map_t *m = make_map(sizeof(int), sizeof(int), toint);
+        map_t *m = make_map(sizeof(int), sizeof(int), toint, NULL);
         //printf("after make:\n");
         //mm_print_map(m);
 
@@ -520,7 +524,7 @@ int main(int argc, char *argv[])
         mm_marshal("test.txt", m);
         delete_map(m);
 
-        map_t *mm = make_map(sizeof(int), sizeof(int), toint);
+        map_t *mm = make_map(sizeof(int), sizeof(int), toint, NULL);
         mm_unmarshal("test.txt", mm);
         //mm_print_map(mm, true);
         for (ll_traverse(queue, node)) {
