@@ -20,7 +20,7 @@
 
 #endif
 
-typedef uint64_t (*key2int_t) (const void *key);
+typedef uint64_t (*key2int_t) (const void *key, size_t keysize);
 typedef int (*keycmp_t) (const void *key1, const void *key2, size_t keysize);
 
 typedef struct map_s {

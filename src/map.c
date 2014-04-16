@@ -21,11 +21,11 @@ int unused  __attribute__((unused));
         }
 
 static inline uint64_t h0(map_t *m, void *key) {
-        return m->k2int(key) % (m->cap);
+        return m->k2int(key, m->key_size) % (m->cap);
 }
 
 static inline uint64_t h1(map_t *m, void *key) {
-        return m->k2int(key) % (m->cap << 1);
+        return m->k2int(key, m->key_size) % (m->cap << 1);
 }
 
 static inline uint64_t getpos(map_t *m, void *key)
@@ -134,6 +134,8 @@ static int split(map_t *m)
                 kv_pair_t *kv;
                 kv = (kv_pair_t *)node->item;
                 uint64_t new_offset = h1(m, kv->key);
+                //printf("key %s, keyhash %llu, old %llu, new_offset %llu\n",
+                //       (const char *) kv->key, m->k2int(kv->key, m->key_size), m->pos, new_offset);
                 if (m->pos == new_offset) {
                         continue;
                 }
@@ -389,7 +391,7 @@ void mm_print_map(map_t *m, bool verbose)
 #ifdef TESTMAP
 // testing
 
-uint64_t toint(const void *key)
+uint64_t toint(const void *key, size_t key_size)
 {
         return (uint64_t)*(int *)key;
 }
@@ -539,6 +541,11 @@ int main(int argc, char *argv[])
         }
 
         printf("--- PASS ---\n");
+
+        //mm = make_map(sizeof(int), sizeof(int), toint, NULL);
+        //int k = 1061089813;
+        //mm_put(mm, &k, &k);
+        //mm_print_map(mm, true);
 
         delete_map(mm);
         ll_delete_list(queue);

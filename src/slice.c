@@ -50,7 +50,7 @@ size_t ss_append(slice_t *s, void *item)
 int ss_get(slice_t *s, uint64_t i, void *item)
 {
         if (i >= s->len) {
-                printf("index out of range\n");
+                printf("ss_get: index out of range i %d, len %zu\n", (int)i, s->len);
                 return -1;
         }
 
@@ -61,7 +61,7 @@ int ss_get(slice_t *s, uint64_t i, void *item)
 void *ss_getptr(slice_t *s, uint64_t i)
 {
         if (i >= s->len) {
-                printf("index out of range\n");
+                printf("ss_getptr: index out of range i %d, len %zu\n", (int)i, s->len);
                 return NULL;
         }
         return s->array+i*s->item_size;
@@ -70,7 +70,7 @@ void *ss_getptr(slice_t *s, uint64_t i)
 int ss_put(slice_t *s, uint64_t i, void *item)
 {
         if (i >= s->len) {
-                printf("index out of range\n");
+                printf("ss_put: index out of range i %d, len %zu\n", (int)i, s->len);
                 return -1;
         }
 

@@ -7,7 +7,7 @@
 static const int limit = 1000000;
 static const int trial = 10;
 
-uint64_t toint(const void *key)
+uint64_t toint(const void *key, size_t key_size)
 {
         return (uint64_t)*(int *)key;
 }
