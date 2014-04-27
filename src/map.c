@@ -111,10 +111,10 @@ static bool get_and_update(map_t *m,
 {
         kv_pair_t *kv = get_kv_from_bucket(bucket, key, m->key_size, m->kcmp);
         if (kv) {
-                kv->value = realloc(kv->value, m->value_size);
-                if (!kv->value) {
-                        error_at_line(-1, errno, __FILE__, __LINE__, NULL);
-                }
+                //kv->value = realloc(kv->value, m->value_size);
+                //if (!kv->value) {
+                //        error_at_line(-1, errno, __FILE__, __LINE__, NULL);
+                //}
                 memcpy(kv->value, value, m->value_size);
                 return true;
         }
@@ -359,7 +359,7 @@ int mm_unmarshal(const char *path, map_t *m)
 
 slice_t *mm_keyset(map_t *m)
 {
-        slice_t *s = make_slice(m->used, sizeof(m->key_size), NULL);
+        slice_t *s = make_slice(m->used, m->key_size, NULL);
         kv_pair_t kv;
 
         for (int i = 0; i < m->s->len; i++) {
