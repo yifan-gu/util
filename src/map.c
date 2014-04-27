@@ -59,13 +59,13 @@ static kv_pair_t *new_kv_pair(void *key, size_t key_size,
 {
         kv_pair_t *kv;
         NEW_INSTANCE(kv, kv_pair_t);
-        kv->key = malloc(key_size);
+        kv->key = calloc(key_size, 1);
         if (!kv->key) {
                 error_at_line(-1, errno, __FILE__, __LINE__, NULL);
         }
         memcpy(kv->key, key, key_size);
 
-        kv->value = malloc(value_size);
+        kv->value = calloc(value_size, 1);
         if (!kv->value) {
                 error_at_line(-1, errno, __FILE__, __LINE__, NULL);
         }
@@ -92,7 +92,7 @@ static kv_pair_t *get_kv_from_bucket(list_t *bucket, void *key, size_t key_size,
         return NULL;
 }
 
-static inline list_t * get_bucket(map_t *m, void *key)
+static inline list_t *get_bucket(map_t *m, void *key)
 {
         uint64_t offset = getpos(m, key);
         return *(list_t **)ss_getptr(m->s, offset);
@@ -357,6 +357,22 @@ int mm_unmarshal(const char *path, map_t *m)
         return 0;
 }
 
+slice_t *mm_keyset(map_t *m)
+{
+        slice_t *s = make_slice(m->used, sizeof(m->key_size), NULL);
+        kv_pair_t kv;
+
+        for (int i = 0; i < m->s->len; i++) {
+                node_t *node;
+                list_t *list = *(list_t **)ss_getptr(m->s, i);
+                for (ll_traverse(list, node)) {
+                        ll_get_node_item(list, node, &kv);
+                        ss_append(s, kv.key);
+                }
+        }
+        return s;
+}
+
 void mm_print_map(map_t *m, bool verbose)
 {
         printf("map statistics:\n");
@@ -443,7 +459,7 @@ int main(int argc, char *argv[])
 
         printf("=== Random Test ===\n");
         list_t *queue = ll_new_list(sizeof(int), NULL);
-        for (int i = 0; i < 102400; i++) {
+        for (int i = 0; i < 10240; i++) {
                 int ran = rand();
                 ll_append(queue, &ran);
         }
@@ -455,7 +471,7 @@ int main(int argc, char *argv[])
                         int k;
                         int v, getValue;
                         ll_get_node_item(queue, node, &v);
-                        k = (int)v;
+                        k = v;
 
                         assert(mm_put(m, &k, &v) == 0);
                         assert(mm_haskey(m, &k));
@@ -469,7 +485,7 @@ int main(int argc, char *argv[])
                         int k;
                         int v, getValue;
                         ll_get_node_item(queue, node, &v);
-                        k = (int)v;
+                        k = v;
 
                         assert(mm_haskey(m, &k));
                         assert(mm_get(m, &k, &getValue));
@@ -477,12 +493,39 @@ int main(int argc, char *argv[])
                 }
                 printf("--- PASS ---\n");
 
+                printf("=== RUN Keyset Test ===\n");
+                slice_t *s = mm_keyset(m);
+                for (int i = 0; i < s->len; i++) {
+                        int k;
+                        ss_get(s, i, &k);
+                        assert(mm_haskey(m, &k));
+                }
+
+                for (ll_traverse(queue, node)) {
+                        bool found = false;
+                        int origK;
+                        ll_get_node_item(queue, node, &origK);
+                        for (int i = 0; i < s->len; i++) {
+                                int k;
+                                ss_get(s, i, &k);
+                                if (k == origK) {
+                                        found = true;
+                                        break;
+                                }
+                        }
+                        assert(found);
+                }
+                assert(s->len <= queue->len);
+                delete_slice(s);
+
+                printf("--- PASS ---\n");
+
                 printf("=== RUN Delete Test ===\n");
                 for (ll_traverse(queue, node)) {
                         int k;
                         int v, getValue;
                         ll_get_node_item(queue, node, &v);
-                        k = (int)v;
+                        k = v;
 
                         mm_delete(m, &k);
                         assert(!mm_haskey(m, &k));
@@ -495,7 +538,7 @@ int main(int argc, char *argv[])
                         int k;
                         int v, getValue;
                         ll_get_node_item(queue, node, &v);
-                        k = (int)v;
+                        k = v;
 
                         assert(!mm_haskey(m, &k));
                         assert(!mm_get(m, &k, &getValue));
@@ -514,7 +557,7 @@ int main(int argc, char *argv[])
                 int k;
                 int v, getValue;
                 ll_get_node_item(queue, node, &v);
-                k = (int)v;
+                k = v;
 
                 assert(mm_put(m, &k, &v) == 0);
                 assert(mm_haskey(m, &k));
@@ -533,7 +576,7 @@ int main(int argc, char *argv[])
                 int k;
                 int v, getValue;
                 ll_get_node_item(queue, node, &v);
-                k = (int)v;
+                k = v;
 
                 assert(mm_haskey(m, &k));
                 assert(mm_get(mm, &k, &getValue));

@@ -1,5 +1,5 @@
 CC = gcc
-CFLAG = -Wall -Werror -std=c99 -O3
+CFLAG = -Wall -Werror -std=c99 -g
 
 IDIR = include
 SRCDIR = src

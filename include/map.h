@@ -67,4 +67,7 @@ int mm_marshal(const char *path, map_t *m);
 
 int mm_unmarshal(const char *path, map_t *m);
 
+// return the key set of the map, user needs to free the slice returned later
+slice_t *mm_keyset(map_t *m);
+
 #endif

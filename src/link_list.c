@@ -49,7 +49,7 @@ void ll_init_list(list_t *list, size_t item_size, dtor_t dtor)
         list->dtor = dtor;
 }
 
-list_t * ll_new_list(size_t item_size, dtor_t dtor)
+list_t *ll_new_list(size_t item_size, dtor_t dtor)
 {
         list_t *list;
         NEW_INSTANCE(list, list_t);
